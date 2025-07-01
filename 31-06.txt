@@ -1,0 +1,29 @@
+from pyspark import SparkContext
+sc.stop()
+ 
+sc = SparkContext().getOrCreate()
+ 
+stopwords = ["is", "the", "a", "an"]
+ 
+data = ["The sun rises in the east", "She drinks a cup of coffee every morning"]
+rdd = sc.parallelize(data).flatMap(lambda x:x.split(" "))
+ 
+rdd1 = rdd.filter(lambda x: x not in stopwords )
+ 
+rdd2 = rdd1.map(lambda x: (x,1))
+ 
+rdd3 = rdd2.reduceByKey(lambda x,y : x+y)
+print(rdd3.collect())
+ 
+ 
+ --------------------------
+data = [("Alice", 80), ("Bob", 90), ("Alice", 70), ("Bob", 85), ("Charlie", 60)]
+ 
+rdd = sc.parallelize(data)
+ 
+rdd1 = rdd.map(lambda x: (x[0], (x[1],1)))
+ 
+rdd2 = rdd1.reduceByKey(lambda x,y: (x[0]+y[0], x[1]+y[1]))
+ 
+rdd3 = rdd2.map(lambda x: (x[0], (x[1][0]/x[1][1])))
+print(rdd3.collect())
