@@ -1,0 +1,50 @@
+#avg rating by director
+SELECT 
+  d.Director AS director_name,
+  ROUND(AVG(f.Rating), 2) AS avg_rating
+FROM ithaproj1.miniproj.fact_movies f
+JOIN ithaproj1.miniproj.dim_director d ON f.director_id = d.director_id
+GROUP BY d.Director
+ORDER BY avg_rating DESC;
+
+
+SELECT 
+  Title, Year, Rating
+FROM ithaproj1.miniproj.fact_movies
+ORDER BY Rating DESC
+LIMIT 5;
+
+
+#num of mvs by each lead actor
+SELECT 
+  a.Lead_Actor AS actor_name,
+  COUNT(*) AS total_movies
+FROM ithaproj1.miniproj.fact_movies f
+JOIN ithaproj1.miniproj.dim_actor a 
+  ON f.actor_id = a.actor_id
+GROUP BY a.Lead_Actor
+ORDER BY total_movies DESC;
+
+
+#movies count of rating
+SELECT 
+  CASE
+    WHEN Rating >= 8 THEN 'Excellent'
+    WHEN Rating >= 6 THEN 'Good'
+    WHEN Rating >= 4 THEN 'Average'
+    ELSE 'Poor'
+  END AS rating_category,
+  COUNT(*) AS movie_count
+FROM ithaproj1.miniproj.fact_movies
+GROUP BY rating_category
+ORDER BY movie_count DESC;
+
+
+
+#num of mvs release3d per year
+SELECT 
+  Year,
+  COUNT(*) AS total_movies
+FROM ithaproj1.miniproj.fact_movies
+GROUP BY Year
+ORDER BY Year;
