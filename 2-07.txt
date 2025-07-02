@@ -1,0 +1,265 @@
+Problem Set
+________________________________________
+Problem 1: UDF – Standardize Currency Columns
+Title: Preparing Financial Data for Analytics
+Scenario: Your financial model requires Valuation, ARR, and Total Funding to be in numeric format, but they’re stored as strings with “$” and “M”/“B” suffixes.
+Task:
+•	Create a UDF that converts values like "$1.2B" to 1_200_000_000.0
+•	Apply it to create Valuation_Num, ARR_Num, and Funding_Num columns
+Use This For: Enabling numeric analysis, ranking, and aggregation on these fields.
+________________________________________
+Problem 2: Window Function – Identify Top Performers per Industry
+Title: Top 2 Companies by Valuation Within Each Industry
+Scenario: Your dashboard highlights the highest-valued SaaS companies within each industry segment.
+Task:
+•	Partition by Industry
+•	Order by Valuation_Num (desc)
+•	Use rank() to assign rankings
+•	Return only top 2 ranked companies per industry
+Purpose: Identify dominant players in each market segment.
+________________________________________
+Problem 3: Window Function – ARR Growth Gaps
+Title: Understand Revenue Distribution Among Competitors
+Scenario: You’re analyzing how ARR drops off between market leaders and followers in each industry.
+Task:
+•	Partition by Industry and order by ARR_Num (desc)
+•	Use lag() to compute ARR_Difference with the previous company
+•	Show companies where this drop exceeds 1 billion USD
+Goal: Spot industries where revenue concentration is steep.
+________________________________________
+Problem 4: CASE WHEN – Label Companies by G2 Rating
+Title: Classify Companies Based on User Sentiment
+Scenario: Your company wants to group products into buckets based on their G2 ratings.
+Task:
+•	Create a column Rating_Tier with:
+–	Excellent (≥ 4.7)
+–	Very Good (4.3 to < 4.7)
+–	Good (4.0 to < 4.3)
+–	Average (< 4.0)
+Application: For visualization in G2-based performance reports.
+________________________________________
+Problem 5: Join – Investor Tier Enrichment
+Title: Understand Impact of Tier-1 Investors
+Extra Table:
+investor_tiers = spark.createDataFrame([
+    ("Accel", "Tier 1"),
+    ("Sequoia", "Tier 1"),
+    ("Andreessen Horowitz", "Tier 1"),
+    ("SoftBank", "Tier 2"),
+    ("Lightspeed", "Tier 2"),
+    ("Unknown", "Tier 3")
+], ["Investor", "Tier"])
+Scenario: You want to analyze companies backed by top-tier investors.
+Task:
+•	Extract the first investor from Top Investors
+•	Join with investor_tiers on investor name
+•	Show companies with Tier 1 and Tier 2 investors, and their valuation
+Use Case: Evaluating investor-brand correlation with valuation.
+________________________________________
+Problem 6: Join – Compare with Industry Median
+Title: Classify Companies Based on Valuation Position
+Extra Table:
+industry_medians = spark.createDataFrame([
+    ("Enterprise Software", 150_000_000_000),
+    ("CRM", 100_000_000_000),
+    ("AI", 70_000_000_000),
+    ("HRTech", 50_000_000_000),
+], ["Industry", "Median_Valuation"])
+Scenario: The board wants to see which companies are outperforming or underperforming relative to their industry’s median valuation.
+Task:
+•	Join with industry_medians on Industry
+•	Create a column Valuation_Position with:
+–	Above Median if Valuation > median
+–	Below Median otherwise
+Purpose: Visualize relative market strength of each company.
+----------------------------------------------------------------------
+solutions
+------------------------------------------------------------
+1).
+
+from os import truncate
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+from pyspark.sql.types import *
+
+spark = SparkSession.builder.appName('SparkByExamples.com').getOrCreate()
+df=spark.read.csv("top100companies.csv",header=True,inferSchema=True)
+df.printSchema()
+df = df.withColumn("Valuation_modified", regexp_replace("Valuation",r"\s*\(.*\)",""))
+def converter(val):
+  if val =="N/A":
+    return 0
+  val=val.replace("$","")
+  if "T" in val:
+    return float(val.replace("T",""))*1_000_000_000_000
+  if "B" in val:
+    return float(val.replace("B",""))*1_000_000_000
+  if "M" in val:
+    return float(val.replace("M",""))*1_000_000
+  else:
+    try:
+      return float(val)
+    except:
+      return 0
+cur_udf=udf(converter)
+df=df.withColumn("valuation_num",cur_udf("Valuation_modified"))
+df=df.withColumn("arr_num",cur_udf("ARR"))
+df=df.withColumn("funding_num",cur_udf("Total Funding"))
+df.select("Valuation", "valuation_num", "ARR", "arr_num", "Total Funding", "funding_num").show()
+------
+root
+ |-- Company Name: string (nullable = true)
+ |-- Founded Year: integer (nullable = true)
+ |-- HQ: string (nullable = true)
+ |-- Industry: string (nullable = true)
+ |-- Total Funding: string (nullable = true)
+ |-- ARR: string (nullable = true)
+ |-- Valuation: string (nullable = true)
+ |-- Employees: string (nullable = true)
+ |-- Top Investors: string (nullable = true)
+ |-- Product: string (nullable = true)
+ |-- G2 Rating: double (nullable = true)
+
++-------------------+-------------+------+--------------------+-------------+--------------------+
+|          Valuation|valuation_num|   ARR|             arr_num|Total Funding|         funding_num|
++-------------------+-------------+------+--------------------+-------------+--------------------+
+|                $3T|       3.0E12| $270B|              2.7E11|          $1B|               1.0E9|
+|            $227.8B|     2.278E11|$37.9B|             3.79E10|       $65.4M| 6.540000000000001E7|
+|              $240B|       2.4E11|$19.4B|             1.94E10|        $2.5M|           2500000.0|
+|              $350B|       3.5E11|$52.9B|             5.29E10|          $2K|                   0|
+|              $215B|      2.15E11|$32.5B|             3.25E10|          N/A|                   0|
+|              $180B|       1.8E11|$14.4B|             1.44E10|        $273M|              2.73E8|
+|              $147B|      1.47E11| $8.9B|               8.9E9|       $82.5M|              8.25E7|
+|               $65B|       6.5E10| $7.3B|               7.3E9|      $249.9M|             2.499E8|
+|               $85B|       8.5E10| $4.5B|               4.5E9|      $145.5M|             1.455E8|
+|               $95B|       9.5E10| $7.1B|               7.1E9|      $122.3M|             1.223E8|
+|               $55B|       5.5E10| $3.5B|               3.5E9|         $60M|               6.0E7|
+|               $75B|       7.5E10| $2.8B|               2.8E9|        $1.4B|               1.4E9|
+|               $32B|       3.2E10| $2.2B|               2.2E9|      $100.5M|             1.005E8|
+|               $10B|       1.0E10| $2.5B|               2.5E9|      $514.3M|5.1429999999999994E8|
+|$27.7B (Salesforce)|      2.77E10| $1.7B|               1.7E9|        $1.4B|               1.4E9|
+|               $10B|       1.0E10| $400M|               4.0E8|        $353M|              3.53E8|
+|               $44B|       4.4E10| $2.1B|               2.1E9|      $147.9M|             1.479E8|
+|               $26B|       2.6E10| $1.7B|               1.7E9|      $311.2M|             3.112E8|
+|               $25B|       2.5E10| $2.2B|               2.2E9|      $230.5M|             2.305E8|
+|               $12B|       1.2E10| $4.1B|4.0999999999999995E9|      $261.3M|             2.613E8|
++-------------------+-------------+------+--------------------+-------------+--------------------+
+only showing top 20 rows
+------------------------------------------------------------------------------------------------------------------------
+2)from pyspark.sql.window import Window
+window_fun=Window.partitionBy("Industry").orderBy(col("Valuation_Num").desc())
+df.withColumn("rank",rank().over(window_fun)).filter(col("rank")<=2).select("Industry","Company Name","valuation_num","rank").show()
+----------------
++--------------------+------------+-------------+----+
+|            Industry|Company Name|valuation_num|rank|
++--------------------+------------+-------------+----+
+|                 APM| AppDynamics|        3.7E9|   1|
+|                BNPL|      Affirm|       1.2E10|   1|
+|Business Intellig...|      Looker|        2.6E9|   1|
+|               CI/CD|    CircleCI|        1.7E9|   1|
+|                 CRM|  Salesforce|     2.278E11|   1|
+|        Card Issuing|     Marqeta|        4.3E9|   1|
+|      Cloud Security|    Netskope|        7.5E9|   1|
+|      Cloud Security|     Zscaler|       3.0E10|   2|
+|       Cloud Storage|     Dropbox|        8.5E9|   1|
+|       Cloud Storage|         Box|        3.5E9|   2|
+|       Collaboration|        Miro|      1.75E10|   1|
+|Collaboration Sof...|   Atlassian|       5.5E10|   1|
+|      Communications| RingCentral|        5.0E9|   1|
+|      Communications|      Twilio|       1.2E10|   2|
+|        Construction|     Procore|        9.0E9|   1|
+|      Contact Center|       Five9|        8.0E9|   1|
+|     Corporate Cards|        Brex|      1.23E10|   1|
+|   Creative Software|       Adobe|       2.4E11|   1|
+|       Customer Data|     Segment|        3.2E9|   1|
+| Customer Engagement|       Braze|        5.6E9|   1|
++--------------------+------------+-------------+----+
+only showing top 20 rows
+
+-------------------------------------------------------------------------------------------------
+4)
+from pyspark.sql.functions import *
+category= df.withColumn("rating", when(col("G2 Rating") >= 4.7, "excellent").when((col("G2 Rating") >= 4.3) & (col("G2 Rating") < 4.7), "very good").when((col("G2 Rating") >= 4.0) & (col("G2 Rating") < 4.3), "good").otherwise("average"))
+category.select("Company Name", "G2 Rating", "rating").show()
+----------------------------------------------
++------------+---------+---------+
+|Company Name|G2 Rating|   rating|
++------------+---------+---------+
+|   Microsoft|      4.4|very good|
+|  Salesforce|      4.3|very good|
+|       Adobe|      4.5|very good|
+|      Oracle|      4.0|     good|
+|         SAP|      4.1|     good|
+|      Intuit|      4.4|very good|
+|  ServiceNow|      4.4|very good|
+|     Workday|      4.2|     good|
+|        Zoom|      4.5|very good|
+|     Shopify|      4.4|very good|
+|   Atlassian|      4.3|very good|
+|   Snowflake|      4.4|very good|
+|     HubSpot|      4.4|very good|
+|    DocuSign|      4.5|very good|
+|       Slack|      4.5|very good|
+|      Notion|      4.7|excellent|
+|     Datadog|      4.4|very good|
+|     MongoDB|      4.5|very good|
+|        Okta|      4.4|very good|
+|      Twilio|      4.3|very good|
++------------+---------+---------+
+only showing top 20 rows
+----------------------------------------------------------------------------------------------------
+investor_tiers = spark.createDataFrame([
+    ("Accel", "Tier 1"),
+    ("Sequoia", "Tier 1"),
+    ("Andreessen Horowitz", "Tier 1"),
+    ("SoftBank", "Tier 2"),
+    ("Lightspeed", "Tier 2"),
+    ("Unknown", "Tier 3")
+], ["Investor", "Tier"])
+first_investor=df.withColumn("fst_investor",split(col("Top Investors"),",")[0])
+joining=first_investor.join(investor_tiers,first_investor.fst_investor==investor_tiers.Investor,how="left")
+joining.select("Company Name","fst_investor","Tier","valuation").show()
+-----------------------
++------------+-------------------+------+-------------------+
+|Company Name|       fst_investor|  Tier|          valuation|
++------------+-------------------+------+-------------------+
+|        Zoom|    Sequoia Capital|  NULL|               $85B|
+|   Atlassian|     Accel Partners|  NULL|               $55B|
+|       Slack|              Accel|Tier 1|$27.7B (Salesforce)|
+|     Workday|  Greylock Partners|  NULL|               $65B|
+|     Datadog|             ICONIQ|  NULL|               $44B|
+|         SAP|       Dietmar Hopp|  NULL|              $215B|
+|  ServiceNow|         JMI Equity|  NULL|              $147B|
+|      Notion|     Index Ventures|  NULL|               $10B|
+|     Shopify|           Bessemer|  NULL|               $95B|
+|      Twilio|           Bessemer|  NULL|               $12B|
+|      Intuit|    Sierra Ventures|  NULL|              $180B|
+|   Snowflake|            Sequoia|Tier 1|               $75B|
+|     MongoDB|            Sequoia|Tier 1|               $26B|
+|      Stripe|            Sequoia|Tier 1|               $65B|
+|      Oracle|      Larry Ellison|  NULL|              $350B|
+|       Adobe|  Hambrecht & Quist|  NULL|              $240B|
+|        Okta|Andreessen Horowitz|Tier 1|               $25B|
+|     HubSpot|   General Catalyst|  NULL|               $32B|
+|   Microsoft|         Bill Gates|  NULL|                $3T|
+|  Salesforce|       Halsey Minor|  NULL|            $227.8B|
++------------+-------------------+------+-------------------+
+only showing top 20 rows
+---------------------------------------------------------------------------
+industry_medians = spark.createDataFrame([
+    ("Enterprise Software", 150_000_000_000),
+    ("CRM", 100_000_000_000),
+    ("AI", 70_000_000_000),
+    ("HRTech", 50_000_000_000),
+], ["Industry", "Median_Valuation"])
+joins=industry_medians.join(df,industry_medians.Industry==df.Industry,how="inner")
+final=joins.withColumn("valuation_position",when(col("Valuation_Num")>col("Median_Valuation"),"Above median").otherwise("Below median"))
+final.select(df.Industry,"Company Name","Valuation_Num","Median_Valuation","valuation_position").show()
+--------------------------------------------
++-------------------+------------+-------------+----------------+------------------+
+|           Industry|Company Name|Valuation_Num|Median_Valuation|valuation_position|
++-------------------+------------+-------------+----------------+------------------+
+|Enterprise Software|         SAP|      2.15E11|    150000000000|      Below median|
+|Enterprise Software|   Microsoft|       3.0E12|    150000000000|      Below median|
+|                CRM|  Salesforce|     2.278E11|    100000000000|      Below median|
++-------------------+------------+-------------+----------------+------------------+
