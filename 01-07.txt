@@ -1,0 +1,21 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import desc, avg,round,count,col
+ 
+# spark = SparkSession.builder.appName("parquet file").getOrCreate()
+ 
+# df = spark.read.parquet("titanic.parquet")
+# df.printSchema()
+# pblm1=df.groupBy("Pclass", "Sex").agg(round(avg("Survived"), 2).alias("SurvivalRate")).orderBy("Pclass", desc("SurvivalRate")).show()
+
+
+# fil=df.filter((df.Fare.isNotNull())&(df.Age.isNotNull()))
+# pblm2=fil.groupBy("Embarked").agg((round(avg("Age"),2)).alias("AvgAge"),(round(avg("Fare"),2)).alias("AvgFare")).orderBy(desc("AvgFare")).show()
+
+# pblm3=df.filter(df.Survived==1).select("Name","Pclass","Sex","Fare","Cabin").orderBy(desc("Fare")).limit(5).show()
+#4th pblm
+spark=SparkSession.builder.appName("csvfile").getOrCreate()
+df = spark.read.csv("top100companies.csv",header=True,inferSchema=True)
+df.printSchema()
+filter=df.filter((col("ARR")>100)&(col("Valuation")<500)&(col("G2 Rating")>3.9)&(col("Founded Year")>=2015))
+res=filter.groupBy("Industry").agg((count("*").alias("companycount")),(round(avg("ARR"),2).alias("avgARR")),(round(avg("Valuation"),2))).filter(col("companycount")>=2).orderBy(desc("avgARR"))
+res.show()
